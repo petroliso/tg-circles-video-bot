@@ -1,5 +1,5 @@
 const { Scenes } = require("telegraf");
-const { db } = require("../bot");
+const { getUserStats, getTotalStats } = require("../bot");
 
 const statisticsScene = new Scenes.BaseScene("statistics");
 
@@ -15,38 +15,46 @@ statisticsScene.command("cancel", (ctx) => {
   });
 });
 
-statisticsScene.enter((ctx) => {
-  const userId = ctx.from.id;
-  const userData = db.users[userId] || {
-    processedVideos: 0,
-    appliedEffects: 0,
-    lastActivity: "никогда",
-  };
-
-  const statsMessage = `
+statisticsScene.enter(async (ctx) => {
+  try {
+    const userId = ctx.from.id;
+    
+    // Получаем статистику пользователя из базы данных
+    const userData = await getUserStats(userId);
+    
+    // Получаем общую статистику
+    const totalStats = await getTotalStats();
+    
+    // Форматируем дату последней активности
+    const lastActivity = userData.lastActivity instanceof Date
+      ? userData.lastActivity.toLocaleString("ru-RU")
+      : userData.lastActivity;
+    
+    const statsMessage = `
 📊 *Ваша статистика*:
   
 🎬 Обработано видео: ${userData.processedVideos}
 ✨ Применено эффектов: ${userData.appliedEffects}
-🕒 Последняя активность: ${
-    userData.lastActivity instanceof Date
-      ? userData.lastActivity.toLocaleString("ru-RU")
-      : userData.lastActivity
-  }
+🕒 Последняя активность: ${lastActivity}
 
 📈 *Общая статистика*:
-🎬 Всего обработано видео: ${db.totalVideosProcessed}
-✨ Всего применено эффектов: ${db.totalEffectsApplied}
-👥 Всего пользователей: ${Object.keys(db.users).length}
+🎬 Всего обработано видео: ${totalStats.totalVideosProcessed}
+✨ Всего применено эффектов: ${totalStats.totalEffectsApplied}
+👥 Всего пользователей: ${totalStats.totalUsers}
   `;
 
-  ctx.replyWithMarkdown(statsMessage, {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "Вернуться в главное меню", callback_data: "back_to_main" }],
-      ],
-    },
-  });
+    ctx.replyWithMarkdown(statsMessage, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "Вернуться в главное меню", callback_data: "back_to_main" }],
+        ],
+      },
+    });
+  } catch (error) {
+    console.error('Ошибка при получении статистики:', error);
+    ctx.reply('Произошла ошибка при получении статистики. Пожалуйста, попробуйте позже.');
+    ctx.scene.leave();
+  }
 });
 
 statisticsScene.action("back_to_main", (ctx) => {
@@ -60,6 +68,13 @@ statisticsScene.action("back_to_main", (ctx) => {
   });
 });
 
+// Обработчик кнопок навигации
+statisticsScene.hears("🎬 Обработать видео", (ctx) => {
+  ctx.scene.leave();
+  ctx.scene.enter("videoProcessing");
+});
+
+// Обработчик для всех других сообщений
 statisticsScene.on("message", (ctx) => {
   ctx.reply("Используйте кнопки для навигации");
 });

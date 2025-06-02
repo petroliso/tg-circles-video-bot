@@ -2,35 +2,35 @@ const { Telegraf, Scenes, session } = require("telegraf");
 const { message } = require("telegraf/filters");
 require("dotenv").config();
 
+// Импорт функций для работы с базой данных SQLite
+const { 
+  initDatabase, 
+  ensureUserExists, 
+  updateUserStats: dbUpdateUserStats, 
+  getUserStats, 
+  getTotalStats, 
+  closeDatabase 
+} = require('./database');
+
+// Инициализируем базу данных при запуске
+initDatabase();
+
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-const db = {
-  users: {},
-  totalVideosProcessed: 0,
-  totalEffectsApplied: 0,
-};
-
-function updateUserStats(userId, action) {
-  if (!db.users[userId]) {
-    db.users[userId] = {
-      processedVideos: 0,
-      appliedEffects: 0,
-      lastActivity: new Date(),
-    };
+// Функция обновления статистики пользователя
+async function updateUserStats(userId, action) {
+  try {
+    // Убедимся, что пользователь существует
+    await ensureUserExists({ id: userId });
+    
+    // Обновляем статистику
+    await dbUpdateUserStats(userId, action);
+  } catch (error) {
+    console.error('Ошибка при обновлении статистики:', error);
   }
-
-  if (action === "video") {
-    db.users[userId].processedVideos += 1;
-    db.totalVideosProcessed += 1;
-  } else if (action === "effect") {
-    db.users[userId].appliedEffects += 1;
-    db.totalEffectsApplied += 1;
-  }
-
-  db.users[userId].lastActivity = new Date();
 }
 
-module.exports = { bot, db, updateUserStats };
+module.exports = { bot, updateUserStats, getUserStats, getTotalStats };
 
 const { videoProcessingScene } = require("./scenes/videoProcessingScene");
 const { statisticsScene } = require("./scenes/statisticsScene");
@@ -58,7 +58,9 @@ bot.hears("📊 Статистика", (ctx) => ctx.scene.enter("statistics"));
 bot.hears("✨ Наложить эффекты", (ctx) => ctx.scene.enter("effects"));
 
 bot.on(message("video"), (ctx) => {
-  ctx.reply("Пожалуйста, сначала выберите действие из меню");
+  // Напрямую переходим к обработке видео в режиме конвертации в кружок
+  ctx.scene.enter("videoProcessing");
+  ctx.scene.state.action = "convert_circle";
 });
 
 bot.catch((err, ctx) => {
